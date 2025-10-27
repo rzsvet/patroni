@@ -75,19 +75,19 @@ jobs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
-    # - name: Build and Push Citus Patroni Image
-    #   if: steps.get-tag.outputs.should_build == 'true'
-    #   uses: docker/build-push-action@v5
-    #   with:
-    #     context: ./patroni-source
-    #     file: ./patroni-source/Dockerfile.citus
-    #     platforms: linux/amd64,linux/arm64
-    #     push: true
-    #     tags: |
-    #       webadm/patroni-citus:${{ steps.get-tag.outputs.latest_tag }}
-    #       webadm/patroni-citus:latest
-    #     cache-from: type=gha
-    #     cache-to: type=gha,mode=max
+    - name: Build and Push Citus Patroni Image
+      if: steps.get-tag.outputs.should_build == 'true'
+      uses: docker/build-push-action@v5
+      with:
+        context: ./patroni-source
+        file: ./patroni-source/Dockerfile.citus
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: |
+          webadm/patroni-citus:${{ steps.get-tag.outputs.latest_tag }}
+          webadm/patroni-citus:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
 
     - name: Create GitHub Release Tag
       run: |
@@ -101,4 +101,4 @@ jobs:
       run: |
         echo "✅ Successfully built and pushed:"
         echo "   - webadm/patroni:${{ steps.get-tag.outputs.latest_tag }}"
-        # echo "   - webadm/patroni-citus:${{ steps.get-tag.outputs.latest_tag }}"
+        echo "   - webadm/patroni-citus:${{ steps.get-tag.outputs.latest_tag }}"
