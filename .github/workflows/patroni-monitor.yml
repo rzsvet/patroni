@@ -2,10 +2,13 @@ name: Monitor Patroni and Build Multi-arch Docker Images
 
 on:
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '0 0 1 * *'
   workflow_dispatch:
   push:
     branches: [ main ]
+
+permissions:
+  contents: write
 
 jobs:
   check-and-build:
@@ -13,6 +16,9 @@ jobs:
     steps:
     - name: Checkout current repo
       uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
       
     - name: Get latest Patroni tag
       id: get-tag
@@ -83,13 +89,12 @@ jobs:
     #     cache-from: type=gha
     #     cache-to: type=gha,mode=max
 
-    - name: Create GitHub Tag
-      if: steps.get-tag.outputs.should_build == 'true'
+    - name: Create GitHub Release Tag
       run: |
         git config --global user.name "GitHub Actions"
         git config --global user.email "actions@github.com"
-        git tag -a "${{ steps.get-tag.outputs.latest_tag }}" -m "Patroni version ${{ steps.get-tag.outputs.latest_tag }}"
-        git push origin "${{ steps.get-tag.outputs.latest_tag }}"
+        git tag ${{ needs.check-new-release.outputs.new_tag }}
+        git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git ${{ needs.check-new-release.outputs.new_tag }}
 
     - name: Notify success
       if: steps.get-tag.outputs.should_build == 'true'
