@@ -1,0 +1,99 @@
+name: Monitor Patroni and Build Multi-arch Docker Images
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  check-and-build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout current repo
+      uses: actions/checkout@v4
+      
+    - name: Get latest Patroni tag
+      id: get-tag
+      run: |
+        LATEST_TAG=$(curl -s https://api.github.com/repos/patroni/patroni/tags | jq -r '.[0].name')
+        echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+        echo "Latest Patroni tag: $LATEST_TAG"
+        
+        # Проверяем, существует ли уже такой тег в нашем репозитории
+        if git rev-parse "refs/tags/$LATEST_TAG" >/dev/null 2>&1; then
+          echo "Tag $LATEST_TAG already exists"
+          echo "should_build=false" >> $GITHUB_OUTPUT
+        else
+          echo "New tag found: $LATEST_TAG"
+          echo "should_build=true" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Checkout Patroni source
+      if: steps.get-tag.outputs.should_build == 'true'
+      uses: actions/checkout@v4
+      with:
+        repository: patroni/patroni
+        ref: ${{ steps.get-tag.outputs.latest_tag }}
+        path: patroni-source
+
+    - name: Set up QEMU
+      if: steps.get-tag.outputs.should_build == 'true'
+      uses: docker/setup-qemu-action@v3
+
+    - name: Set up Docker Buildx
+      if: steps.get-tag.outputs.should_build == 'true'
+      uses: docker/setup-buildx-action@v3
+      with:
+        platforms: linux/amd64,linux/arm64
+
+    - name: Log in to Docker Hub
+      if: steps.get-tag.outputs.should_build == 'true'
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Build and Push Main Patroni Image
+      if: steps.get-tag.outputs.should_build == 'true'
+      uses: docker/build-push-action@v5
+      with:
+        context: ./patroni-source
+        file: ./patroni-source/Dockerfile
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: |
+          webadm/patroni:${{ steps.get-tag.outputs.latest_tag }}
+          webadm/patroni:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Build and Push Citus Patroni Image
+      if: steps.get-tag.outputs.should_build == 'true'
+      uses: docker/build-push-action@v5
+      with:
+        context: ./patroni-source
+        file: ./patroni-source/Dockerfile.citus
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: |
+          webadm/patroni-citus:${{ steps.get-tag.outputs.latest_tag }}
+          webadm/patroni-citus:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Create GitHub Tag
+      if: steps.get-tag.outputs.should_build == 'true'
+      run: |
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
+        git tag -a "${{ steps.get-tag.outputs.latest_tag }}" -m "Patroni version ${{ steps.get-tag.outputs.latest_tag }}"
+        git push origin "${{ steps.get-tag.outputs.latest_tag }}"
+
+    - name: Notify success
+      if: steps.get-tag.outputs.should_build == 'true'
+      run: |
+        echo "✅ Successfully built and pushed:"
+        echo "   - webadm/patroni:${{ steps.get-tag.outputs.latest_tag }}"
+        echo "   - webadm/patroni-citus:${{ steps.get-tag.outputs.latest_tag }}"
